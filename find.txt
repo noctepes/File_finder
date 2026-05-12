@@ -1,0 +1,1 @@
+i=0; find . -type f -not -path '*/.*' | while read line; do i=$((i+1)); echo -ne "file No.: $i\r"; echo "$line" >> list_kem_path.txt; echo "${line##*/}" >> list_ten_sach.txt; done; echo -e "\nHoàn thành! Found $i file."
