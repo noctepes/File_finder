@@ -1053,6 +1053,8 @@ document.getElementById('col-input').addEventListener('change', parseKeywords)
 document.getElementById('col-input').addEventListener('input', parseKeywords)
 document.getElementById('skip-header').addEventListener('change', parseKeywords)
 try { localStorage.removeItem('ff_base_path'); localStorage.removeItem('ff_lucid_tpl') } catch {}
+// Re-run after all scripts loaded so LS/S are defined and Part 1 text renders
+updateUI()
 </script>
 </body>
 </html>
