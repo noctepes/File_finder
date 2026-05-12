@@ -87,7 +87,7 @@
     .preview-box { background: var(--s1); border: 1px solid var(--b1); border-radius: 8px; overflow: hidden; }
     .preview-head { padding: 8px 12px; background: var(--s2); border-bottom: 1px solid var(--b1); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
     .preview-head span.acc { color: var(--acc); font-weight: 700; }
-    .preview-list { max-height: 320px; overflow-y: auto; }
+    .preview-list { max-height: 450px; overflow-y: auto; }
     .preview-row { display: flex; gap: 10px; padding: 5px 12px; border-top: 1px solid var(--b1); font-size: 11px; }
     .preview-row:first-child { border-top: none; }
     .preview-row:hover { background: var(--s2); }
@@ -386,7 +386,8 @@ const LANG = {
     savedMsg:'Đã lưu →', couldNotSaveMsg:'Không thể lưu vào folder',
     previewLabel:'XEM TRƯỚC', showingFirst:'(hiển thị {n} đầu)', andMore:'… và {n} file khác',
     filesFoundLabel:'files tìm thấy', useForFindBtn:'→ Dùng để Tìm File',
-    useForFindToast:'Đã tải danh sách', useForFindHint:'keywords · Chọn folder tìm kiếm'
+    useForFindToast:'Đã tải danh sách', useForFindHint:'keywords · Chọn folder tìm kiếm',
+    stripExtBtn:'Xoá đuôi file', restoreExtBtn:'Giữ đuôi file'
   },
   en: {
     steps:'WORKFLOW', s1Title:'Excel / TXT Source', s2Title:'Search Directory', s3Title:'Export Destination',
@@ -423,7 +424,8 @@ const LANG = {
     savedMsg:'Saved →', couldNotSaveMsg:'Could not save to folder',
     previewLabel:'PREVIEW', showingFirst:'(showing first {n})', andMore:'… and {n} more',
     filesFoundLabel:'files found', useForFindBtn:'→ Use for File Finder',
-    useForFindToast:'List loaded', useForFindHint:'keywords · Select search folder'
+    useForFindToast:'List loaded', useForFindHint:'keywords · Select search folder',
+    stripExtBtn:'Strip extensions', restoreExtBtn:'Keep extensions'
   }
 }
 let currentLang = 'en'
@@ -520,7 +522,7 @@ function esc(s) {
 // ═══════════════════════════════════════════════════════════════
 // PART 1 — LIST GENERATOR
 // ═══════════════════════════════════════════════════════════════
-const LS = { scanHandle: null, scanning: false, lastNameLines: [] }
+const LS = { scanHandle: null, scanning: false, lastNameLines: [], pathLines: [], nameLines: [], stripExt: false }
 
 async function pickScanFolder() {
   if (!('showDirectoryPicker' in window)) { toast('Not supported', 'Please use Chrome or Edge'); return }
@@ -595,6 +597,7 @@ async function doScan() {
     saved = true
   } catch(e) { /* write permission denied in some cases */ }
 
+  LS.pathLines = pathLines; LS.nameLines = nameLines; LS.stripExt = false
   hint.textContent = `${count.toLocaleString()} files found${exts.length ? ` · ${exts.join(', ')}` : ''}`
   renderScanResults(count, pathLines, nameLines, pathContent, nameContent, saved)
 }
@@ -622,7 +625,8 @@ function renderScanResults(count, pathLines, nameLines, pathContent, nameContent
   const url2 = URL.createObjectURL(new Blob([nameContent], { type: 'text/plain' }))
   dlRow.innerHTML = `
     <a href="${url1}" download="list_kem_path.txt" class="btn-dl">📥 list_kem_path.txt</a>
-    <a href="${url2}" download="list_ten_sach.txt" class="btn-dl">📥 list_ten_sach.txt</a>
+    <a href="${url2}" download="list_ten_sach.txt" class="btn-dl" id="dl-names-link">📥 list_ten_sach.txt</a>
+    <button class="btn-secondary" id="btn-strip-ext" onclick="toggleStripExt()">${d.stripExtBtn}</button>
     <button class="btn-secondary" onclick="useListForFind()">${d.useForFindBtn}</button>`
   area.appendChild(dlRow)
 
@@ -641,6 +645,44 @@ function renderScanResults(count, pathLines, nameLines, pathContent, nameContent
       ${moreMsg}
     </div>`
   area.appendChild(box)
+}
+
+async function toggleStripExt() {
+  if (!LS.nameLines.length) return
+  LS.stripExt = !LS.stripExt
+  const d = LANG[currentLang]
+  const activeNames = LS.stripExt
+    ? LS.nameLines.map(n => n.includes('.') ? n.slice(0, n.lastIndexOf('.')) : n)
+    : LS.nameLines
+  const nameContent = activeNames.join('\n')
+
+  // Update download link
+  const dlLink = document.getElementById('dl-names-link')
+  if (dlLink) dlLink.href = URL.createObjectURL(new Blob([nameContent], { type: 'text/plain' }))
+
+  // Update button style + label
+  const btn = document.getElementById('btn-strip-ext')
+  if (btn) {
+    btn.textContent = LS.stripExt ? d.restoreExtBtn : d.stripExtBtn
+    btn.style.background = LS.stripExt ? 'var(--acc)' : ''
+    btn.style.color = LS.stripExt ? '#fff' : ''
+    btn.style.borderColor = LS.stripExt ? 'var(--acc)' : ''
+  }
+
+  // Re-save list_ten_sach.txt
+  try {
+    const fh = await LS.scanHandle.getFileHandle('list_ten_sach.txt', { create: true })
+    const w = await fh.createWritable(); await w.write(nameContent); await w.close()
+  } catch(e) {}
+
+  // Update preview name column
+  document.querySelectorAll('.preview-row').forEach((row, i) => {
+    const nameEl = row.querySelector('.pr-name')
+    if (nameEl && activeNames[i] !== undefined) nameEl.textContent = activeNames[i]
+  })
+
+  // Sync useListForFind data
+  LS.lastNameLines = activeNames
 }
 
 function useListForFind() {
