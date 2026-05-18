@@ -199,6 +199,12 @@
     body { background: linear-gradient(135deg,#1c1916 0%,#282828 60%,#3d1800 100%); background-attachment: fixed; }
     #toast { box-shadow: 0 8px 24px rgba(0,0,0,.5); }
     ::-webkit-scrollbar-thumb:hover { background: var(--acc); }
+    .scan-status-card { display: flex; align-items: center; gap: 18px; background: var(--s1); border: 1px solid var(--b1); border-radius: 12px; padding: 20px 24px; margin-top: 16px; }
+    .scan-status-spinner { width: 28px; height: 28px; min-width: 28px; border: 3px solid var(--b1); border-top-color: var(--acc); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    .scan-status-title { font-size: 14px; font-weight: 700; color: var(--acc); margin-bottom: 4px; }
+    .scan-status-sub { font-size: 11px; color: var(--muted); max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scan-status-count { margin-left: auto; font-size: 28px; font-weight: 700; color: var(--acc); letter-spacing: -.02em; white-space: nowrap; }
     .filter-bar { padding: 8px 20px; border-bottom: 1px solid var(--b1); background: var(--s1); flex-shrink: 0; display: flex; align-items: center; gap: 10px; }
     .filter-bar input { flex: 1; }
     .filter-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
@@ -599,10 +605,23 @@ async function doScan() {
   const nameQuery = document.getElementById('name-filter').value.trim().toLowerCase()
   const skipHidden = document.getElementById('scan-skip-hidden').checked
 
+  // Show scanning status in results area
+  const resultsArea = document.getElementById('list-results')
+  resultsArea.innerHTML = `
+    <div class="scan-status-card">
+      <div class="scan-status-spinner"></div>
+      <div>
+        <div class="scan-status-title" id="scan-status-title">Đang quét...</div>
+        <div class="scan-status-sub" id="scan-status-sub">${LS.scanHandle.name}</div>
+      </div>
+      <div class="scan-status-count" id="scan-status-count">0</div>
+    </div>`
+
   const pathLines = [], nameLines = []
-  let count = 0
+  let count = 0, scanned = 0
   try {
     for await (const { name, relPath } of walkDirList(LS.scanHandle, '', skipHidden)) {
+      scanned++
       if (exts.length) {
         const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : ''
         if (!exts.includes(ext)) continue
@@ -611,8 +630,12 @@ async function doScan() {
       count++
       pathLines.push('./' + relPath)
       nameLines.push(name)
-      if (count % 200 === 0) {
-        hint.textContent = `${LANG[currentLang].scanningMsg} ${count.toLocaleString()} files...`
+      if (scanned % 100 === 0) {
+        const cntEl = document.getElementById('scan-status-count')
+        const subEl = document.getElementById('scan-status-sub')
+        if (cntEl) cntEl.textContent = count.toLocaleString() + ' files'
+        if (subEl) subEl.textContent = relPath.length > 60 ? '…' + relPath.slice(-60) : relPath
+        hint.textContent = `${LANG[currentLang].scanningMsg} ${scanned.toLocaleString()} mục...`
         await new Promise(r => setTimeout(r, 0))
       }
     }
