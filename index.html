@@ -631,22 +631,14 @@ async function doScan() {
 
   const pathContent = pathLines.join('\n')
   const nameContent = nameLines.join('\n')
-  let saved = false
-  try {
-    const fh1 = await LS.scanHandle.getFileHandle('list_kem_path.txt', { create: true })
-    const w1 = await fh1.createWritable(); await w1.write(pathContent); await w1.close()
-    const fh2 = await LS.scanHandle.getFileHandle('list_ten_sach.txt', { create: true })
-    const w2 = await fh2.createWritable(); await w2.write(nameContent); await w2.close()
-    saved = true
-  } catch(e) { /* write permission denied in some cases */ }
 
   LS.pathLines = pathLines; LS.nameLines = nameLines; LS.stripExt = false
   const filterSuffix = (nameQuery ? ` · "${nameQuery}"` : '') + (exts.length ? ` · ${exts.join(', ')}` : '')
   hint.textContent = `${count.toLocaleString()} files found${filterSuffix}`
-  renderScanResults(count, pathLines, nameLines, pathContent, nameContent, saved)
+  renderScanResults(count, pathLines, nameLines, pathContent, nameContent)
 }
 
-function renderScanResults(count, pathLines, nameLines, pathContent, nameContent, saved) {
+function renderScanResults(count, pathLines, nameLines, pathContent, nameContent) {
   const area = document.getElementById('list-results')
   const d = LANG[currentLang]
   area.innerHTML = ''
@@ -655,11 +647,7 @@ function renderScanResults(count, pathLines, nameLines, pathContent, nameContent
   const stats = document.createElement('div')
   stats.className = 'stats-row'
   stats.innerHTML = `
-    <div class="stat-card"><strong>${count.toLocaleString()}</strong><span>${d.filesFoundLabel}</span></div>
-    <div class="stat-card ${saved ? 'ok' : ''}">
-      <strong style="font-size:14px">${saved ? '✓' : '⚠'}</strong>
-      <span>${saved ? `${d.savedMsg} ${LS.scanHandle.name}` : d.couldNotSaveMsg}</span>
-    </div>`
+    <div class="stat-card"><strong>${count.toLocaleString()}</strong><span>${d.filesFoundLabel}</span></div>`
   area.appendChild(stats)
 
   // Download + use buttons
@@ -712,12 +700,6 @@ async function toggleStripExt() {
     btn.style.color = LS.stripExt ? '#fff' : ''
     btn.style.borderColor = LS.stripExt ? 'var(--acc)' : ''
   }
-
-  // Re-save list_ten_sach.txt
-  try {
-    const fh = await LS.scanHandle.getFileHandle('list_ten_sach.txt', { create: true })
-    const w = await fh.createWritable(); await w.write(nameContent); await w.close()
-  } catch(e) {}
 
   // Update preview name column
   document.querySelectorAll('.preview-row').forEach((row, i) => {
