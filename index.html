@@ -156,7 +156,10 @@
     .file-row:hover { background: var(--s2); }
     .file-row input[type=checkbox] { cursor: pointer; flex-shrink: 0; }
     .f-name { font-size: 12px; font-weight: 500; color: var(--txt); flex-shrink: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .f-relpath { font-size: 11px; color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .f-relpath { font-size: 11px; color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; border-radius: 3px; padding: 1px 4px; margin: -1px -4px; transition: background .1s, color .1s; }
+    .f-relpath:hover { color: var(--acc); background: var(--acc2); }
+    .f-relpath:hover::after { content: ' ⎘'; font-size: 10px; opacity: .7; }
+    .f-relpath.path-copied { color: var(--ok) !important; background: var(--ok2) !important; }
     .f-size { font-size: 10px; color: var(--muted); flex-shrink: 0; min-width: 62px; text-align: right; }
     .f-size.loading { opacity: .4; font-style: italic; }
     .f-size.heavy { color: #ff9b3d; font-weight: 600; }
@@ -196,6 +199,11 @@
     body { background: linear-gradient(135deg,#1c1916 0%,#282828 60%,#3d1800 100%); background-attachment: fixed; }
     #toast { box-shadow: 0 8px 24px rgba(0,0,0,.5); }
     ::-webkit-scrollbar-thumb:hover { background: var(--acc); }
+    .filter-bar { padding: 8px 20px; border-bottom: 1px solid var(--b1); background: var(--s1); flex-shrink: 0; display: flex; align-items: center; gap: 10px; }
+    .filter-bar input { flex: 1; }
+    .filter-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .filter-count strong { color: var(--acc); }
+    .preview-row.hidden { display: none; }
   </style>
 </head>
 <body>
@@ -240,6 +248,10 @@
         <div>
           <div id="ext-filter-lbl" style="font-size:11px;color:var(--muted);margin-bottom:5px;"></div>
           <input type="text" class="full-w" id="ext-filter">
+        </div>
+        <div>
+          <div id="name-filter-lbl" style="font-size:11px;color:var(--muted);margin-bottom:5px;"></div>
+          <input type="text" class="full-w" id="name-filter" oninput="filterPreview(this.value)">
         </div>
         <div class="opt-row">
           <input type="checkbox" id="scan-skip-hidden" checked>
@@ -333,6 +345,11 @@
         <button class="btn-primary" id="btn-search" disabled onclick="doSearch()" data-i18n="search">⚡ SEARCH</button>
         <span class="hint-text" id="search-hint" data-i18n="selectItemsNeeded">Complete all 3 steps above</span>
       </div>
+      <div class="filter-bar" id="result-filter-bar" style="display:none">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap">🔎</span>
+        <input type="text" id="result-filter" oninput="filterResults(this.value)">
+        <span class="filter-count" id="result-filter-count" style="display:none"></span>
+      </div>
       <div class="progress-wrap"><div class="progress-fill" id="progress"></div></div>
       <div class="results-area" id="results-area">
         <div class="empty">
@@ -397,7 +414,11 @@ const LANG = {
     previewLabel:'XEM TRƯỚC', showingFirst:'(hiển thị {n} đầu)', andMore:'… và {n} file khác',
     filesFoundLabel:'files tìm thấy', useForFindBtn:'→ Dùng để Tìm File',
     useForFindToast:'Đã tải danh sách', useForFindHint:'keywords · Chọn folder tìm kiếm',
-    stripExtBtn:'Xoá đuôi file', restoreExtBtn:'Giữ đuôi file'
+    stripExtBtn:'Xoá đuôi file', restoreExtBtn:'Giữ đuôi file',
+    nameFilterLbl:'Tìm tên file', nameFilterHint:'(vd: logo banner)',
+    nameFilterPlaceholder:'Để trống = hiện tất cả',
+    resultFilterPlaceholder:'Lọc tên file trong kết quả...',
+    filterCount:'Hiển thị {v} / {t}'
   },
   en: {
     steps:'WORKFLOW', s1Title:'Excel / TXT Source', s2Title:'Search Directory', s3Title:'Export Destination',
@@ -435,7 +456,11 @@ const LANG = {
     previewLabel:'PREVIEW', showingFirst:'(showing first {n})', andMore:'… and {n} more',
     filesFoundLabel:'files found', useForFindBtn:'→ Use for File Finder',
     useForFindToast:'List loaded', useForFindHint:'keywords · Select search folder',
-    stripExtBtn:'Strip extensions', restoreExtBtn:'Keep extensions'
+    stripExtBtn:'Strip extensions', restoreExtBtn:'Keep extensions',
+    nameFilterLbl:'Search filename', nameFilterHint:'(e.g. logo banner)',
+    nameFilterPlaceholder:'Leave empty = show all',
+    resultFilterPlaceholder:'Filter results by filename...',
+    filterCount:'Showing {v} / {t}'
   }
 }
 let currentLang = 'en'
@@ -467,6 +492,12 @@ function updateUI() {
   if (skipLbl) skipLbl.textContent = dict.skipHiddenLbl
   const optHintBox = document.getElementById('opt-hint-box')
   if (optHintBox) optHintBox.innerHTML = dict.optHint
+  const nameFilterLbl = document.getElementById('name-filter-lbl')
+  if (nameFilterLbl) nameFilterLbl.innerHTML = `${dict.nameFilterLbl} <span style="color:var(--muted2)">${dict.nameFilterHint}</span>`
+  const nameFilterInput = document.getElementById('name-filter')
+  if (nameFilterInput) nameFilterInput.placeholder = dict.nameFilterPlaceholder
+  const rfInput = document.getElementById('result-filter')
+  if (rfInput) rfInput.placeholder = dict.resultFilterPlaceholder
   // Part 1 dynamic elements
   if (typeof LS !== 'undefined') {
     const scanHint = document.getElementById('scan-hint')
@@ -565,6 +596,7 @@ async function doScan() {
 
   const extRaw = document.getElementById('ext-filter').value.trim()
   const exts = extRaw ? extRaw.split(/[\s,;]+/).map(e => e.replace(/^\./,'').toLowerCase()).filter(Boolean) : []
+  const nameQuery = document.getElementById('name-filter').value.trim().toLowerCase()
   const skipHidden = document.getElementById('scan-skip-hidden').checked
 
   const pathLines = [], nameLines = []
@@ -575,6 +607,7 @@ async function doScan() {
         const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : ''
         if (!exts.includes(ext)) continue
       }
+      if (nameQuery && !name.toLowerCase().includes(nameQuery)) continue
       count++
       pathLines.push('./' + relPath)
       nameLines.push(name)
@@ -608,7 +641,8 @@ async function doScan() {
   } catch(e) { /* write permission denied in some cases */ }
 
   LS.pathLines = pathLines; LS.nameLines = nameLines; LS.stripExt = false
-  hint.textContent = `${count.toLocaleString()} files found${exts.length ? ` · ${exts.join(', ')}` : ''}`
+  const filterSuffix = (nameQuery ? ` · "${nameQuery}"` : '') + (exts.length ? ` · ${exts.join(', ')}` : '')
+  hint.textContent = `${count.toLocaleString()} files found${filterSuffix}`
   renderScanResults(count, pathLines, nameLines, pathContent, nameContent, saved)
 }
 
@@ -693,6 +727,19 @@ async function toggleStripExt() {
 
   // Sync useListForFind data
   LS.lastNameLines = activeNames
+}
+
+function filterPreview(q) {
+  q = (q || '').trim().toLowerCase()
+  let visible = 0, total = 0
+  document.querySelectorAll('.preview-row').forEach(row => {
+    const nameEl = row.querySelector('.pr-name')
+    if (!nameEl) return
+    total++
+    const show = !q || nameEl.textContent.toLowerCase().includes(q)
+    row.style.display = show ? '' : 'none'
+    if (show) visible++
+  })
 }
 
 function useListForFind() {
@@ -843,6 +890,9 @@ function sizeClass(b) {
 async function doSearch() {
   if (S.searching) return
   S.searching = true; S.fileMap.clear(); S.fileCounter = 0
+  const rf = document.getElementById('result-filter'); if (rf) rf.value = ''
+  const rfBar = document.getElementById('result-filter-bar'); if (rfBar) rfBar.style.display = 'none'
+  const rfCnt = document.getElementById('result-filter-count'); if (rfCnt) rfCnt.style.display = 'none'
   const btn = document.getElementById('btn-search')
   const prog = document.getElementById('progress')
   const hint = document.getElementById('search-hint')
@@ -940,7 +990,7 @@ function renderResults() {
         <div class="file-row" id="row-${f.id}">
           <input type="checkbox" checked data-id="${f.id}" onchange="updateSelectedSize()">
           <div class="f-name" title="${esc(f.name)}">${esc(f.name)}</div>
-          <div class="f-relpath" title="${esc(f.relPath)}">${esc(f.relPath)}</div>
+          <div class="f-relpath" title="${esc(f.relPath)}" onclick="copyPath(this,'${esc(f.relPath)}')">${esc(f.relPath)}</div>
           <div class="f-size loading">...</div>
           <div class="f-prog" id="fp-${f.id}"><div class="f-prog-fill" id="fpf-${f.id}"></div></div>
           <div class="f-st" id="fst-${f.id}"></div>
@@ -956,6 +1006,11 @@ function renderResults() {
         <div class="missing-body">${S.missing.map(m=>`<div class="m-chip">${esc(m)}</div>`).join('')}</div>
       </div>`)
   }
+  // Show filter bar and re-apply any active filter
+  const rfBar = document.getElementById('result-filter-bar')
+  if (rfBar) rfBar.style.display = ''
+  const rfInput = document.getElementById('result-filter')
+  if (rfInput && rfInput.value) filterResults(rfInput.value)
 }
 
 function toggleGroup(gi) {
@@ -992,6 +1047,50 @@ function updateSelectedSize() {
   wrap.className = 'size-summary'
   if (bytes >= 1073741824) wrap.classList.add('huge')
   else if (bytes >= 209715200) wrap.classList.add('heavy')
+}
+
+function copyPath(el, path) {
+  navigator.clipboard.writeText(path).then(() => {
+    el.classList.add('path-copied')
+    const orig = el.textContent
+    el.textContent = '✓ ' + path
+    setTimeout(() => {
+      el.classList.remove('path-copied')
+      el.textContent = orig
+    }, 1200)
+  }).catch(() => {
+    // fallback for older browsers
+    const ta = document.createElement('textarea')
+    ta.value = path; ta.style.position = 'fixed'; ta.style.opacity = '0'
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy')
+    document.body.removeChild(ta)
+    el.classList.add('path-copied')
+    setTimeout(() => el.classList.remove('path-copied'), 1200)
+  })
+}
+
+function filterResults(q) {
+  q = (q || '').trim().toLowerCase()
+  let visible = 0, total = 0
+  document.querySelectorAll('.file-row').forEach(row => {
+    const nameEl = row.querySelector('.f-name')
+    if (!nameEl) return
+    total++
+    const show = !q || nameEl.textContent.toLowerCase().includes(q)
+    row.style.display = show ? '' : 'none'
+    if (show) visible++
+  })
+  const countEl = document.getElementById('result-filter-count')
+  if (countEl) {
+    if (q && total > 0) {
+      const d = LANG[currentLang]
+      countEl.innerHTML = d.filterCount.replace('{v}', `<strong>${visible}</strong>`).replace('{t}', total)
+      countEl.style.display = ''
+    } else {
+      countEl.style.display = 'none'
+    }
+  }
+  updateSelectedSize()
 }
 
 async function doCopy() {
@@ -1107,6 +1206,145 @@ document.getElementById('skip-header').addEventListener('change', parseKeywords)
 try { localStorage.removeItem('ff_base_path'); localStorage.removeItem('ff_lucid_tpl') } catch {}
 // Re-run after all scripts loaded so LS/S are defined and Part 1 text renders
 updateUI()
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE PERSISTENCE — survive Live Server / accidental refresh
+// ═══════════════════════════════════════════════════════════════
+const _SK = 'ff_state_v2'
+
+function _saveState() {
+  try {
+    sessionStorage.setItem(_SK, JSON.stringify({
+      lang: currentLang,
+      tab: document.querySelector('.tab-content.active')?.id || 'tab-list',
+      ls: {
+        pathLines: LS.pathLines,
+        nameLines: LS.nameLines,
+        stripExt: LS.stripExt,
+        folderName: LS.scanHandle?.name || ''
+      },
+      s: {
+        keywords: S.keywords,
+        rawRows: S.rawRows,
+        excelName: S.excelName,
+        results: S.results.map(g => ({
+          keyword: g.keyword,
+          files: g.files.map(({ name, relPath, id }) => ({ name, relPath, id }))
+        })),
+        missing: S.missing,
+        fileCounter: S.fileCounter,
+        srcName: S.srcHandle?.name || '',
+        outName: S.outHandle?.name || '',
+        fileMapData: [...S.fileMap].map(([id, { name, relPath, size }]) => [id, { name, relPath, size }])
+      }
+    }))
+  } catch(e) {}
+}
+
+function _restoreState() {
+  try {
+    const raw = sessionStorage.getItem(_SK)
+    if (!raw) return
+    const st = JSON.parse(raw)
+
+    // ── Language ──
+    if (st.lang && st.lang !== currentLang) {
+      currentLang = st.lang
+      document.getElementById('btn-vi').classList.toggle('active', st.lang === 'vi')
+      document.getElementById('btn-en').classList.toggle('active', st.lang === 'en')
+    }
+
+    // ── Part 1: scan results ──
+    if (st.ls && st.ls.pathLines?.length) {
+      LS.pathLines = st.ls.pathLines
+      LS.nameLines = st.ls.nameLines || []
+      LS.stripExt  = st.ls.stripExt || false
+      LS.lastNameLines = LS.nameLines
+      const pathContent = LS.pathLines.join('\n')
+      const nameContent = LS.nameLines.join('\n')
+      if (st.ls.folderName) {
+        document.getElementById('scan-folder-path').textContent = st.ls.folderName
+        document.getElementById('scan-folder-card').classList.add('ok')
+        document.getElementById('btn-scan').disabled = false
+      }
+      renderScanResults(LS.pathLines.length, LS.pathLines, LS.nameLines, pathContent, nameContent, false)
+      document.getElementById('scan-hint').textContent =
+        `${LS.pathLines.length.toLocaleString()} files · ⚡ restored`
+    }
+
+    // ── Part 2: keywords + results ──
+    if (st.s) {
+      S.keywords    = st.s.keywords    || []
+      S.rawRows     = st.s.rawRows     || []
+      S.excelName   = st.s.excelName   || ''
+      S.results     = st.s.results     || []
+      S.missing     = st.s.missing     || []
+      S.fileCounter = st.s.fileCounter || 0
+      S.fileMap.clear()
+      ;(st.s.fileMapData || []).forEach(([id, f]) => S.fileMap.set(id, f))
+
+      if (S.excelName) {
+        document.getElementById('step1').classList.add('done')
+        document.querySelector('#step1 .step-dot').textContent = '✓'
+        const nameEl = document.getElementById('excel-name')
+        nameEl.textContent = `✓ ${S.excelName} — ${S.keywords.length} keywords`
+        nameEl.style.display = 'block'
+        document.getElementById('drop-text').style.display = 'none'
+        document.getElementById('drop-zone').classList.add('ok')
+      }
+
+      // Show folder names (handles lost, need re-select to copy)
+      const noHandle = currentLang === 'vi' ? ' ⚠ cần chọn lại' : ' ⚠ re-select'
+      if (st.s.srcName) {
+        document.getElementById('src-path').textContent = st.s.srcName + noHandle
+        document.getElementById('s2-detail').textContent = st.s.srcName
+      }
+      if (st.s.outName) {
+        document.getElementById('out-path').textContent = st.s.outName + noHandle
+        document.getElementById('s3-detail').textContent = st.s.outName
+      }
+
+      if (S.results.length || S.missing.length) {
+        renderResults()
+        updateSelectedSize()
+        const rfBar = document.getElementById('result-filter-bar')
+        if (rfBar) rfBar.style.display = ''
+        // Show restore notice in hint
+        const hint = document.getElementById('search-hint')
+        if (hint) hint.textContent = `${S.results.reduce((a,g)=>a+g.files.length,0)} files · ⚡ restored — re-select folders to copy`
+      }
+    }
+
+    // ── Active tab ──
+    if (st.tab) switchTab(st.tab.replace('tab-', ''))
+
+    updateUI()
+  } catch(e) {}
+}
+
+// ── Hook save after scan & search complete ──
+const _origRenderScan = renderScanResults
+renderScanResults = function(...args) { _origRenderScan(...args); _saveState() }
+
+const _origRenderResults = renderResults
+renderResults = function(...args) { _origRenderResults(...args); _saveState() }
+
+// Also save when keywords are loaded
+const _origOnFileLoaded = onFileLoaded
+onFileLoaded = function(...args) { _origOnFileLoaded(...args); _saveState() }
+
+// ── Warn on accidental refresh / close when there's active data ──
+window.addEventListener('beforeunload', e => {
+  if (LS.pathLines.length || S.results.length || S.keywords.length) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+})
+
+// ── Restore on load ──
+_restoreState()
 </script>
 </body>
 </html>
