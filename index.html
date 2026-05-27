@@ -602,7 +602,8 @@ async function doScan() {
 
   const extRaw = document.getElementById('ext-filter').value.trim()
   const exts = extRaw ? extRaw.split(/[\s,;]+/).map(e => e.replace(/^\./,'').toLowerCase()).filter(Boolean) : []
-  const nameQuery = document.getElementById('name-filter').value.trim().toLowerCase()
+  const nameQueryRaw = document.getElementById('name-filter').value.trim().toLowerCase()
+  const nameQueries = nameQueryRaw ? nameQueryRaw.split(/[\s,;]+/).filter(Boolean) : []
   const skipHidden = document.getElementById('scan-skip-hidden').checked
 
   // Show scanning status in results area
@@ -626,7 +627,7 @@ async function doScan() {
         const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : ''
         if (!exts.includes(ext)) continue
       }
-      if (nameQuery && !name.toLowerCase().includes(nameQuery)) continue
+      if (nameQueries.length && !nameQueries.some(q => name.toLowerCase().includes(q))) continue
       count++
       pathLines.push('./' + relPath)
       nameLines.push(name)
@@ -656,7 +657,7 @@ async function doScan() {
   const nameContent = nameLines.join('\n')
 
   LS.pathLines = pathLines; LS.nameLines = nameLines; LS.stripExt = false
-  const filterSuffix = (nameQuery ? ` · "${nameQuery}"` : '') + (exts.length ? ` · ${exts.join(', ')}` : '')
+  const filterSuffix = (nameQueries.length ? ` · "${nameQueries.join(' | ')}"` : '') + (exts.length ? ` · ${exts.join(', ')}` : '')
   hint.textContent = `${count.toLocaleString()} files found${filterSuffix}`
   renderScanResults(count, pathLines, nameLines, pathContent, nameContent)
 }
